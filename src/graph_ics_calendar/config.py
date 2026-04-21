@@ -22,6 +22,7 @@ class Settings:
     sync_interval_seconds: int
     full_resync_after_seconds: int
     cache_key: bytes
+    enable_docs: bool
 
     @property
     def authority(self) -> str:
@@ -37,6 +38,13 @@ def _required(name: str) -> str:
     if not value:
         raise RuntimeError(f"environment variable {name} is required")
     return value
+
+
+def _bool(name: str, default: bool = False) -> bool:
+    raw = os.environ.get(name)
+    if raw is None or raw == "":
+        return default
+    return raw.strip().lower() in {"1", "true", "yes", "on"}
 
 
 def _load_cache_key() -> bytes:
@@ -65,6 +73,7 @@ def get_settings() -> Settings:
         sync_interval_seconds=int(os.environ.get("SYNC_INTERVAL_SECONDS", "600")),
         full_resync_after_seconds=int(os.environ.get("FULL_RESYNC_AFTER_SECONDS", "86400")),
         cache_key=_load_cache_key(),
+        enable_docs=_bool("GRAPH_ICS_ENABLE_DOCS", default=False),
     )
 
 

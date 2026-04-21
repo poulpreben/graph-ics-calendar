@@ -66,7 +66,13 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         finally:
             await sync_service.stop()
 
-    app = FastAPI(title="graph-ics-calendar", lifespan=lifespan)
+    app = FastAPI(
+        title="graph-ics-calendar",
+        lifespan=lifespan,
+        docs_url="/docs" if settings.enable_docs else None,
+        redoc_url="/redoc" if settings.enable_docs else None,
+        openapi_url="/openapi.json" if settings.enable_docs else None,
+    )
     app.state.settings = settings
     app.state.store = store
     app.state.sync_service = sync_service
