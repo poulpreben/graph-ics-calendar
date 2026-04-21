@@ -1,0 +1,63 @@
+[project]
+name = "graph-ics-calendar"
+version = "0.1.0"
+description = "Self-hosted Microsoft 365 calendar to ICS proxy using delegated Microsoft Graph permissions."
+readme = "README.md"
+requires-python = ">=3.11"
+license = { text = "MIT" }
+dependencies = [
+    "fastapi>=0.110",
+    "uvicorn[standard]>=0.29",
+    "msal>=1.28",
+    "httpx>=0.27",
+    "cryptography",
+    "python-multipart>=0.0.26",
+    "python-dotenv",
+]
+
+[project.scripts]
+graph-ics-calendar = "graph_ics_calendar.__main__:main"
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/graph_ics_calendar"]
+
+[dependency-groups]
+dev = [
+    "ruff>=0.5",
+    "ty>=0.0.1a1",
+]
+
+[tool.ruff]
+line-length = 100
+target-version = "py311"
+src = ["src"]
+
+[tool.ruff.lint]
+select = [
+    "E",   # pycodestyle errors
+    "W",   # pycodestyle warnings
+    "F",   # pyflakes
+    "I",   # isort
+    "UP",  # pyupgrade
+    "B",   # flake8-bugbear
+    "SIM", # flake8-simplify
+    "RUF", # ruff-specific
+    "ANN", # flake8-annotations (enforce type hints)
+]
+ignore = [
+    "ANN401", # allow typing.Any where pragmatic
+]
+
+[tool.ruff.lint.per-file-ignores]
+"src/graph_ics_calendar/__main__.py" = ["ANN"]
+
+[tool.ty.environment]
+python-version = "3.11"
+root = ["./src"]
+
+[tool.ty.src]
+include = ["src"]
