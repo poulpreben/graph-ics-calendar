@@ -14,6 +14,7 @@ no explicit CSRF tokens are issued.
 
 from __future__ import annotations
 
+import asyncio
 import html
 import logging
 import secrets
@@ -191,7 +192,9 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         calendars: list[dict[str, Any]] | None = None
         calendar_error: str | None = None
         try:
-            access_token = acquire_access_token(settings, store, home_account_id)
+            access_token = await asyncio.to_thread(
+                acquire_access_token, settings, store, home_account_id
+            )
             async with httpx.AsyncClient(timeout=15.0) as http:
                 calendars = await list_calendars(http, access_token)
         except AuthenticationError as exc:
