@@ -87,7 +87,7 @@ async def backfill_missing_calendar_ids(
     calendar. Runs once per sync cycle and is a no-op when everything is
     already backfilled."""
 
-    pending = store.list_feeds_needing_calendar_backfill()
+    pending = await asyncio.to_thread(store.list_feeds_needing_calendar_backfill)
     if not pending:
         return
 
@@ -98,7 +98,9 @@ async def backfill_missing_calendar_ids(
 
     for home_account_id, feeds in by_account.items():
         try:
-            access_token = acquire_access_token(settings, store, home_account_id)
+            access_token = await asyncio.to_thread(
+                acquire_access_token, settings, store, home_account_id
+            )
         except AuthenticationError as exc:
             log.warning("auth failure resolving default calendar for %s: %s", home_account_id, exc)
             continue
@@ -114,7 +116,9 @@ async def backfill_missing_calendar_ids(
             continue
 
         for feed in feeds:
-            store.set_feed_calendar(feed["feed_token"], default["id"], default.get("name"))
+            await asyncio.to_thread(
+                store.set_feed_calendar, feed["feed_token"], default["id"], default.get("name")
+            )
             log.info(
                 "backfilled feed %s to default calendar %r",
                 feed["feed_token"][:6] + "…",
@@ -131,24 +135,27 @@ async def sync_pair(
 ) -> None:
     """Run one sync cycle for a single (account, calendar) pair."""
 
-    state = store.get_sync_state(home_account_id, calendar_id)
+    state = await asyncio.to_thread(store.get_sync_state, home_account_id, calendar_id)
     now = datetime.now(UTC)
 
     full = _should_full_resync(settings, state, now)
     if full:
         window_start, window_end = _compute_window(settings)
         current_url: str | None = build_initial_delta_url(window_start, window_end, calendar_id)
-        store.clear_events(home_account_id, calendar_id)
+        await asyncio.to_thread(store.clear_events, home_account_id, calendar_id)
     else:
         window_start = state["window_start"] or ""
         window_end = state["window_end"] or ""
         current_url = state["delta_link"]
 
     try:
-        access_token = acquire_access_token(settings, store, home_account_id)
+        access_token = await asyncio.to_thread(
+            acquire_access_token, settings, store, home_account_id
+        )
     except AuthenticationError as exc:
         log.warning("auth failure for %s: %s", home_account_id, exc)
-        store.update_sync_state(
+        await asyncio.to_thread(
+            store.update_sync_state,
             home_account_id,
             calendar_id,
             delta_link=state.get("delta_link"),
@@ -164,9 +171,13 @@ async def sync_pair(
             page, next_link, delta_link = await fetch_delta_page(http, access_token, current_url)
             upserts, deleted_ids = _partition_delta_page(page)
             if upserts:
-                store.upsert_events(home_account_id, calendar_id, upserts)
+                await asyncio.to_thread(
+                    store.upsert_events, home_account_id, calendar_id, upserts
+                )
             if deleted_ids:
-                store.delete_events(home_account_id, calendar_id, deleted_ids)
+                await asyncio.to_thread(
+                    store.delete_events, home_account_id, calendar_id, deleted_ids
+                )
             if delta_link:
                 final_delta_link = delta_link
             current_url = next_link
@@ -176,7 +187,8 @@ async def sync_pair(
             home_account_id,
             calendar_id,
         )
-        store.update_sync_state(
+        await asyncio.to_thread(
+            store.update_sync_state,
             home_account_id,
             calendar_id,
             delta_link=None,
@@ -187,7 +199,8 @@ async def sync_pair(
         return
     except AuthenticationError as exc:
         log.warning("auth failure mid-sync for %s: %s", home_account_id, exc)
-        store.update_sync_state(
+        await asyncio.to_thread(
+            store.update_sync_state,
             home_account_id,
             calendar_id,
             delta_link=state.get("delta_link"),
@@ -198,7 +211,8 @@ async def sync_pair(
         return
     except httpx.HTTPError as exc:
         log.exception("http error syncing %s/%s", home_account_id, calendar_id)
-        store.update_sync_state(
+        await asyncio.to_thread(
+            store.update_sync_state,
             home_account_id,
             calendar_id,
             delta_link=state.get("delta_link"),
@@ -208,7 +222,8 @@ async def sync_pair(
         )
         return
 
-    store.update_sync_state(
+    await asyncio.to_thread(
+        store.update_sync_state,
         home_account_id,
         calendar_id,
         delta_link=final_delta_link,
@@ -263,7 +278,7 @@ class SyncService:
     async def _cycle(self) -> None:
         async with httpx.AsyncClient(timeout=30.0) as http:
             await backfill_missing_calendar_ids(self._settings, self._store, http)
-            pairs = self._store.list_active_pairs()
+            pairs = await asyncio.to_thread(self._store.list_active_pairs)
             if not pairs:
                 return
             for home_account_id, calendar_id in pairs:
