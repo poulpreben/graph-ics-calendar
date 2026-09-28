@@ -142,7 +142,11 @@ async def sync_pair(
     if full:
         window_start, window_end = _compute_window(settings)
         current_url: str | None = build_initial_delta_url(window_start, window_end, calendar_id)
-        await asyncio.to_thread(store.clear_events, home_account_id, calendar_id)
+        # NOTE: do not clear the cached events here. A full resync must keep
+        # serving the previous snapshot until the new one has been fetched in
+        # its entirety; otherwise an auth failure or a transient HTTP error
+        # below would leave the feed empty. Stale events are pruned after the
+        # fetch completes (see ``prune_events_before``).
     else:
         window_start = state["window_start"] or ""
         window_end = state["window_end"] or ""
@@ -171,9 +175,7 @@ async def sync_pair(
             page, next_link, delta_link = await fetch_delta_page(http, access_token, current_url)
             upserts, deleted_ids = _partition_delta_page(page)
             if upserts:
-                await asyncio.to_thread(
-                    store.upsert_events, home_account_id, calendar_id, upserts
-                )
+                await asyncio.to_thread(store.upsert_events, home_account_id, calendar_id, upserts)
             if deleted_ids:
                 await asyncio.to_thread(
                     store.delete_events, home_account_id, calendar_id, deleted_ids
@@ -221,6 +223,15 @@ async def sync_pair(
             last_error=f"http: {exc}",
         )
         return
+
+    if full:
+        # Every event still present in the calendar was upserted above with an
+        # ``updated_at`` later than ``now``. Anything older fell out of the
+        # window or was deleted upstream, so drop it now that the new snapshot
+        # is complete.
+        await asyncio.to_thread(
+            store.prune_events_before, home_account_id, calendar_id, now.isoformat()
+        )
 
     await asyncio.to_thread(
         store.update_sync_state,

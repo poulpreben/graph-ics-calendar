@@ -427,6 +427,19 @@ class TokenStore:
                 (home_account_id, calendar_id),
             )
 
+    def prune_events_before(self, home_account_id: str, calendar_id: str, cutoff: str) -> None:
+        """Delete cached events for the pair whose ``updated_at`` is older than
+        ``cutoff`` (ISO-8601, UTC). Used after a full resync to drop events that
+        were not part of the freshly fetched snapshot."""
+        with self._connect() as conn:
+            conn.execute(
+                """
+                DELETE FROM events
+                WHERE home_account_id = ? AND calendar_id = ? AND updated_at < ?
+                """,
+                (home_account_id, calendar_id, cutoff),
+            )
+
     def list_events(self, home_account_id: str, calendar_id: str) -> list[dict[str, Any]]:
         with self._connect() as conn:
             rows = conn.execute(
